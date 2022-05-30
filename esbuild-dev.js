@@ -1,3 +1,6 @@
+const os = require('os');
+const fs = require('fs');
+const path = require('path');
 const http = require('http');
 const https = require('https');
 const esbuild = require('esbuild');
@@ -9,9 +12,20 @@ const config = {
 	skipGz: true,
 };
 
+const ostemp = (os.type() === 'Linux') ? '/dev/shm' : os.tmpdir();
+const tmpdir = fs.mkdtempSync(path.join(ostemp, 'esbuild-')) || './dev-tmp/dist';
+const cleanFn = () => {
+	console.log('[clean]', tmpdir);
+	fs.rmSync(tmpdir, { recursive: true, force: true });
+	process.exit();
+};
+process.on('exit', cleanFn);
+process.on('SIGINT', cleanFn); //catches ctrl+c event
+
+
 // const fileHanlder = new statik.Server('./dist');
 const fileHanlder = (req, res) => hanlder(req, res, {
-	"public": './dev-tmp/dist',
+	"public": tmpdir,
 	"etag": true
 });
 esbuild.build({
@@ -26,7 +40,7 @@ esbuild.build({
 		// 'es2015',
 		'es2020',
 	],
-	outdir: './dev-tmp/dist',
+	outdir: tmpdir,
 	loader: {
 		'.js': 'jsx',
 		'.png': 'file',
@@ -37,6 +51,7 @@ esbuild.build({
 		'.woff2': 'file',
 		'.ttf': 'file',
 		'.eot': 'file',
+		'.wasm': 'file',
 	},
 	jsxFactory: 'h',
 	jsxFragment: 'Fragment',
@@ -61,6 +76,10 @@ esbuild.build({
 		console.log('[req]', req.url, req.headers);
 
 		if (config.skipGz) delete req.headers['accept-encoding']; // skip gz
+
+		// ffmpeg-wasm
+		res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+		res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
 
 		// Serve files!
 		req.addListener('end', function () {
